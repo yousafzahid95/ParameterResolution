@@ -1,12 +1,17 @@
 using System.Text.Json;
 using AntlrTest1.Events;
 using AntlrTest1.Interfaces;
-using AntlrTest1.ParameterExtraction;
+using AntlrTest1.BespokeCustomExtraction;
 using Newtonsoft.Json.Linq;
 
-namespace AntlrTest1
+namespace AntlrTest1.BespokeCustomExtraction
 {
-    public class LemDataSourceAdapter
+    /// <summary>
+    /// Data source adapter using Bespoke Custom approach for parameter extraction.
+    /// This is a parallel implementation to LemDataSourceAdapter (ANTLR approach).
+    /// Both achieve the same result but use different extraction methods.
+    /// </summary>
+    public class BespokeDataSourceAdapter
     {
         public async Task<IEnumerable<IDataRecord>> GetRecordsAsync(
             dynamic eventData,
@@ -14,7 +19,7 @@ namespace AntlrTest1
             IEnumerable<IDataRecord> dataset,
             CancellationToken cancellationToken)
         {
-            Console.WriteLine($"DataSource adapter {nameof(LemDataSourceAdapter)} execution starts.");
+            Console.WriteLine($"DataSource adapter {nameof(BespokeDataSourceAdapter)} execution starts (Bespoke Custom approach).");
 
             if (eventData is null)
             {
@@ -26,7 +31,7 @@ namespace AntlrTest1
                                  dataSourceParams != null ? JObject.FromObject(dataSourceParams) : 
                                  new JObject();
 
-            // Extract parameters using ANTLR-based extractor
+            // Extract parameters using Bespoke Custom-based extractor (NO ANTLR)
             var extractedParams = ExtractParameters(eventData, paramsObj);
 
             // Validate extracted parameters
@@ -40,7 +45,7 @@ namespace AntlrTest1
 
         private ExtractedParameters ExtractParameters(object eventData, JObject dataSourceParams)
         {
-            Console.WriteLine("\n[Parameter Extraction] Starting ANTLR-based extraction...");
+            Console.WriteLine("\n[Parameter Extraction] Starting Bespoke Custom-based extraction (NO ANTLR)...");
 
             var result = new ExtractedParameters
             {
@@ -52,8 +57,8 @@ namespace AntlrTest1
                 IsProjectLevel = dataSourceParams["isProjectLevel"]?.ToObject<bool>() ?? false
             };
 
-            // Use grammar-based auto-discovery for semantic pattern matching
-            Console.WriteLine("\n[Auto-Discovery] Using grammar-based semantic patterns...");
+            // Use Bespoke Custom-based auto-discovery for semantic pattern matching
+            Console.WriteLine("\n[Auto-Discovery] Using Bespoke Custom-based semantic patterns...");
             AutoDiscoverParameters(eventData, result);
 
             Console.WriteLine($"\n[Extraction Result] ProjectId={result.ProjectId}, WorkAreaId={result.WorkAreaId}, EntityId={result.EntityId}\n");
@@ -63,8 +68,8 @@ namespace AntlrTest1
 
         private void AutoDiscoverParameters(object eventData, ExtractedParameters result)
         {
-            // Use grammar-based semantic pattern matching
-            var (projectId, workAreaId, entityId) = AntlrParameterExtractor.DiscoverSemanticGuids(eventData);
+            // Use Bespoke Custom-based semantic pattern matching (NO ANTLR)
+            var (projectId, workAreaId, entityId) = BespokeParameterExtractor.DiscoverSemanticGuids(eventData);
 
             if (projectId != Guid.Empty)
             {
@@ -108,7 +113,7 @@ namespace AntlrTest1
                 }
             }
 
-            Console.WriteLine("[Validation] ? All required identifiers present");
+            Console.WriteLine("[Validation] ✓ All required identifiers present");
         }
 
         #region API Calls
@@ -117,19 +122,17 @@ namespace AntlrTest1
         {
             try
             {
-                Console.WriteLine($"\n[API Call] GetWorkAreaEntityAsync");
+                Console.WriteLine($"\n[API Call] GetWorkAreaEntityAsync (Bespoke Custom approach)");
                 Console.WriteLine($"  ProjectId: {parameters.ProjectId}");
                 Console.WriteLine($"  WorkAreaId: {parameters.WorkAreaId}");
                 Console.WriteLine($"  EntityId: {parameters.EntityId}");
-                
-                await Task.Delay(10);
 
                 var dummyData = new JObject
                 {
                     ["EntityId"] = parameters.EntityId,
                     ["ProjectId"] = parameters.ProjectId,
                     ["WorkAreaId"] = parameters.WorkAreaId,
-                    ["EntityName"] = "Test WorkArea Entity",
+                    ["EntityName"] = "Test WorkArea Entity (Bespoke Custom)",
                     ["EntityType"] = "Corporation",
                     ["CategoryName"] = "Legal Entity",
                     ["TaxClassificationTypeName"] = "Partnership",
@@ -160,17 +163,15 @@ namespace AntlrTest1
         {
             try
             {
-                Console.WriteLine($"\n[API Call] GetProjectEntityAsync");
+                Console.WriteLine($"\n[API Call] GetProjectEntityAsync (Bespoke Custom approach)");
                 Console.WriteLine($"  ProjectId: {parameters.ProjectId}");
                 Console.WriteLine($"  EntityId: {parameters.EntityId}");
-                
-                await Task.Delay(10);
 
                 var dummyData = new JObject
                 {
                     ["EntityId"] = parameters.EntityId,
                     ["ProjectId"] = parameters.ProjectId,
-                    ["EntityName"] = "Test Project Entity",
+                    ["EntityName"] = "Test Project Entity (Bespoke Custom)",
                     ["EntityType"] = "Partnership",
                     ["CategoryName"] = "Legal Entity",
                     ["TaxClassificationTypeName"] = "Partnership",

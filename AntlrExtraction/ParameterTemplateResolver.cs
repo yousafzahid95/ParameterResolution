@@ -2,7 +2,7 @@ using System.Text.RegularExpressions;
 using AntlrTest1.Interfaces;
 using Newtonsoft.Json.Linq;
 
-namespace AntlrTest1.ParameterExtraction
+namespace AntlrTest1.AntlrExtraction
 {
     /// <summary>
     /// Resolves template strings that may contain placeholders which are dynamically
@@ -98,4 +98,3 @@ namespace AntlrTest1.ParameterExtraction
         }
     }
 }
-

@@ -1,17 +1,19 @@
 using System.Reflection;
+using Antlr4.Runtime;
+using Antlr4.Runtime.Tree;
 using Newtonsoft.Json.Linq;
 
-namespace AntlrTest1.FluidExtraction
+namespace AntlrTest1.AntlrExtraction
 {
     /// <summary>
-    /// Standalone parameter extractor using reflection and JObject navigation.
-    /// This is a FLUID approach implementation that does NOT use ANTLR.
+    /// ANTLR4-powered parameter extractor for parsing path expressions
+    /// Uses generated PathExpression grammar for tokenization and parsing
     /// Supports: PropertyName, Nested.Property, Array[0], Nested.Array[0].Property
     /// </summary>
-    public static class FluidParameterExtractor
+    public class AntlrParameterExtractor
     {
         /// <summary>
-        /// Extract a value from an object using a path expression (FLUID approach - no ANTLR).
+        /// Extract a value from an object using a path expression
         /// </summary>
         /// <param name="source">Source object to navigate</param>
         /// <param name="pathExpression">Path like "InfoRequest.EntityIds[0]"</param>
@@ -21,13 +23,13 @@ namespace AntlrTest1.FluidExtraction
             if (source == null || string.IsNullOrEmpty(pathExpression))
                 return null;
 
-            // Parse path expression into segments
-            var segments = ParsePathExpression(pathExpression);
-            return NavigatePath(source, segments);
+            // Use generated ANTLR4 parser
+            var tokens = ParseWithGeneratedGrammar(pathExpression);
+            return NavigateTokens(source, tokens);
         }
 
         /// <summary>
-        /// Extract a GUID from an object using a path expression.
+        /// Extract a GUID from an object using a path expression
         /// </summary>
         public static Guid ExtractGuid(object source, string pathExpression)
         {
@@ -43,7 +45,7 @@ namespace AntlrTest1.FluidExtraction
         }
 
         /// <summary>
-        /// Try multiple path expressions (OR logic) and return first valid GUID.
+        /// Try multiple path expressions (OR logic) and return first valid GUID
         /// </summary>
         public static Guid ExtractGuidWithAlternatives(object source, IEnumerable<string> pathExpressions)
         {
@@ -55,7 +57,7 @@ namespace AntlrTest1.FluidExtraction
                 var guid = ExtractGuid(source, path);
                 if (guid != Guid.Empty)
                 {
-                    Console.WriteLine($"  [FLUID] Matched path: {path} = {guid}");
+                    Console.WriteLine($"  [ANTLR4] Matched path: {path} = {guid}");
                     return guid;
                 }
             }
@@ -64,67 +66,163 @@ namespace AntlrTest1.FluidExtraction
         }
 
         /// <summary>
-        /// Parse path expression into segments (FLUID approach - simple string parsing).
+        /// Parse path expression using the generated PathExpression grammar
         /// </summary>
-        private static List<PathSegment> ParsePathExpression(string pathExpression)
+        private static List<PathToken> ParseWithGeneratedGrammar(string pathExpression)
         {
-            var segments = new List<PathSegment>();
-            var parts = pathExpression.Split('.');
-
-            foreach (var part in parts)
+            try
             {
-                var segment = new PathSegment();
+                // Create ANTLR4 input stream
+                var inputStream = new AntlrInputStream(pathExpression);
+                
+                // Create lexer from generated grammar
+                var lexer = new PathExpressionLexer(inputStream);
+                
+                // Create token stream
+                var tokenStream = new CommonTokenStream(lexer);
+                
+                // Create parser from generated grammar
+                var parser = new PathExpressionParser(tokenStream);
+                
+                // Disable error output for cleaner console
+                parser.RemoveErrorListeners();
+                
+                // Parse the path expression
+                var context = parser.pathExpression();
+                
+                // Check if parsing was successful
+                if (context == null || context.exception != null)
+                {
+                    return FallbackTokenize(pathExpression);
+                }
+                
+                // Visit the parse tree to extract tokens
+                var visitor = new PathExpressionVisitor();
+                return visitor.Visit(context) ?? FallbackTokenize(pathExpression);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"  [ANTLR4] Parsing failed, using fallback: {ex.Message}");
+                return FallbackTokenize(pathExpression);
+            }
+        }
 
-                // Check for array indexing: PropertyName[0]
-                var bracketIndex = part.IndexOf('[');
+        /// <summary>
+        /// Visitor to extract path tokens from the parse tree
+        /// </summary>
+        private class PathExpressionVisitor : PathExpressionBaseVisitor<List<PathToken>>
+        {
+            public override List<PathToken> VisitPathExpression(PathExpressionParser.PathExpressionContext context)
+            {
+                var tokens = new List<PathToken>();
+                
+                if (context == null)
+                    return tokens;
+                
+                // Visit each segment
+                var segments = context.segment();
+                if (segments == null)
+                    return tokens;
+                    
+                foreach (var segment in segments)
+                {
+                    if (segment != null)
+                    {
+                        var token = ExtractSegment(segment);
+                        if (token != null)
+                            tokens.Add(token);
+                    }
+                }
+                
+                return tokens;
+            }
+
+            private PathToken? ExtractSegment(PathExpressionParser.SegmentContext context)
+            {
+                if (context == null || context.IDENTIFIER() == null)
+                    return null;
+                    
+                var token = new PathToken
+                {
+                    PropertyName = context.IDENTIFIER().GetText()
+                };
+                
+                // Check for array access
+                if (context.arrayAccess() != null && context.arrayAccess().INTEGER() != null)
+                {
+                    var indexText = context.arrayAccess().INTEGER().GetText();
+                    if (int.TryParse(indexText, out var index))
+                    {
+                        token.ArrayIndex = index;
+                    }
+                }
+                
+                return token;
+            }
+        }
+
+        /// <summary>
+        /// Fallback tokenization if ANTLR parsing fails
+        /// </summary>
+        private static List<PathToken> FallbackTokenize(string pathExpression)
+        {
+            var tokens = new List<PathToken>();
+            var segments = pathExpression.Split('.');
+
+            foreach (var segment in segments)
+            {
+                var token = new PathToken();
+                
+                // Check for array indexing
+                var bracketIndex = segment.IndexOf('[');
                 if (bracketIndex >= 0)
                 {
-                    segment.PropertyName = part.Substring(0, bracketIndex);
+                    token.PropertyName = segment.Substring(0, bracketIndex);
                     
-                    var closeBracket = part.IndexOf(']');
+                    var closeBracket = segment.IndexOf(']');
                     if (closeBracket > bracketIndex)
                     {
-                        var indexStr = part.Substring(bracketIndex + 1, closeBracket - bracketIndex - 1);
+                        var indexStr = segment.Substring(bracketIndex + 1, closeBracket - bracketIndex - 1);
                         if (int.TryParse(indexStr, out var index))
                         {
-                            segment.ArrayIndex = index;
+                            token.ArrayIndex = index;
                         }
                     }
                 }
                 else
                 {
-                    segment.PropertyName = part;
+                    token.PropertyName = segment;
                 }
 
-                if (!string.IsNullOrEmpty(segment.PropertyName))
+                if (!string.IsNullOrEmpty(token.PropertyName))
                 {
-                    segments.Add(segment);
+                    tokens.Add(token);
                 }
             }
 
-            return segments;
+            return tokens;
         }
 
         /// <summary>
-        /// Navigate through path segments to extract value.
+        /// Navigate through tokens to extract value
         /// </summary>
-        private static object? NavigatePath(object current, List<PathSegment> segments)
+        private static object? NavigateTokens(object current, List<PathToken> tokens)
         {
-            foreach (var segment in segments)
+            foreach (var token in tokens)
             {
                 if (current == null)
                     return null;
 
                 // Get property value
-                current = GetPropertyValue(current, segment.PropertyName);
+                current = GetPropertyValue(current, token.PropertyName);
 
                 if (current == null)
                     return null;
 
                 // Handle array indexing if needed
-                if (segment.ArrayIndex.HasValue)
+                if (token.ArrayIndex.HasValue)
                 {
-                    current = GetArrayElement(current, segment.ArrayIndex.Value);
+                    current = GetArrayElement(current, token.ArrayIndex.Value);
                 }
             }
 
@@ -185,7 +283,6 @@ namespace AntlrTest1.FluidExtraction
                 return child;
             }
 
-            // Use reflection for CLR objects
             var type = obj.GetType();
             
             // Try exact match first
@@ -202,26 +299,18 @@ namespace AntlrTest1.FluidExtraction
         }
 
         /// <summary>
-        /// Get element from array or list.
+        /// Get element from array or list
         /// </summary>
         private static object? GetArrayElement(object obj, int index)
         {
             if (obj == null)
                 return null;
 
-            // Handle JArray
-            if (obj is JArray jArray && index >= 0 && index < jArray.Count)
-            {
-                return jArray[index];
-            }
-
-            // Handle IList
             if (obj is System.Collections.IList list && index >= 0 && index < list.Count)
             {
                 return list[index];
             }
 
-            // Handle IEnumerable
             if (obj is System.Collections.IEnumerable enumerable)
             {
                 return enumerable.Cast<object>().Skip(index).FirstOrDefault();
@@ -231,7 +320,7 @@ namespace AntlrTest1.FluidExtraction
         }
 
         /// <summary>
-        /// Auto-discover all GUID properties in an object (FLUID approach).
+        /// Auto-discover all GUID properties in an object
         /// </summary>
         public static Dictionary<string, Guid> DiscoverGuids(object obj, string prefix = "")
         {
@@ -246,7 +335,7 @@ namespace AntlrTest1.FluidExtraction
         }
 
         /// <summary>
-        /// Discover and categorize GUIDs based on naming patterns (FLUID approach).
+        /// Discover and categorize GUIDs based on grammar semantic patterns
         /// </summary>
         public static (Guid ProjectId, Guid WorkAreaId, Guid EntityId) DiscoverSemanticGuids(object obj)
         {
@@ -261,23 +350,23 @@ namespace AntlrTest1.FluidExtraction
                 var path = kvp.Key;
                 var guid = kvp.Value;
 
-                // Check if path matches ProjectId pattern (FLUID pattern matching)
+                // Check if path matches ProjectId pattern
                 if (projectId == Guid.Empty && MatchesProjectIdPattern(path))
                 {
                     projectId = guid;
-                    Console.WriteLine($"  [FLUID Pattern] ProjectId matched: {path} = {guid}");
+                    Console.WriteLine($"  [Grammar Pattern] ProjectId matched: {path} = {guid}");
                 }
                 // Check if path matches WorkAreaId pattern
                 else if (workAreaId == Guid.Empty && MatchesWorkAreaIdPattern(path))
                 {
                     workAreaId = guid;
-                    Console.WriteLine($"  [FLUID Pattern] WorkAreaId matched: {path} = {guid}");
+                    Console.WriteLine($"  [Grammar Pattern] WorkAreaId matched: {path} = {guid}");
                 }
                 // Check if path matches EntityId pattern
                 else if (entityId == Guid.Empty && MatchesEntityIdPattern(path))
                 {
                     entityId = guid;
-                    Console.WriteLine($"  [FLUID Pattern] EntityId matched: {path} = {guid}");
+                    Console.WriteLine($"  [Grammar Pattern] EntityId matched: {path} = {guid}");
                 }
             }
 
@@ -285,55 +374,90 @@ namespace AntlrTest1.FluidExtraction
         }
 
         /// <summary>
-        /// Check if a path matches the ProjectId semantic pattern (FLUID pattern matching).
+        /// Check if a path matches the ProjectId semantic pattern from grammar
         /// </summary>
         private static bool MatchesProjectIdPattern(string path)
         {
             if (string.IsNullOrEmpty(path))
                 return false;
 
-            // FLUID pattern matching: check for ProjectId in path
-            var lowerPath = path.ToLowerInvariant();
-            return lowerPath.Contains("projectid") && 
-                   (lowerPath.EndsWith(".projectid") || lowerPath == "projectid" ||
-                    lowerPath.Contains("inforequest.projectid") ||
-                    lowerPath.Contains("lemevent.projectid") ||
-                    lowerPath.Contains("workplantask.projectid"));
+            try
+            {
+                var inputStream = new AntlrInputStream(path);
+                var lexer = new PathExpressionLexer(inputStream);
+                var tokenStream = new CommonTokenStream(lexer);
+                var parser = new PathExpressionParser(tokenStream);
+                
+                parser.RemoveErrorListeners();
+                
+                // Try to parse as projectIdPattern
+                var context = parser.projectIdPattern();
+                
+                // If parsing succeeded without errors, it matches the pattern
+                return context != null && context.exception == null;
+            }
+            catch
+            {
+                return false;
+            }
         }
 
         /// <summary>
-        /// Check if a path matches the WorkAreaId semantic pattern (FLUID pattern matching).
+        /// Check if a path matches the WorkAreaId semantic pattern from grammar
         /// </summary>
         private static bool MatchesWorkAreaIdPattern(string path)
         {
             if (string.IsNullOrEmpty(path))
                 return false;
 
-            var lowerPath = path.ToLowerInvariant();
-            return (lowerPath.Contains("workareaid") || lowerPath.Contains("workareaid")) &&
-                   (lowerPath.EndsWith(".workareaid") || lowerPath.EndsWith(".workareaid") ||
-                    lowerPath == "workareaid" || lowerPath == "workareaid" ||
-                    lowerPath.Contains("inforequest.workareaid") ||
-                    lowerPath.Contains("lemevent.workareaid") ||
-                    lowerPath.Contains("workplantask.workareaid"));
+            try
+            {
+                var inputStream = new AntlrInputStream(path);
+                var lexer = new PathExpressionLexer(inputStream);
+                var tokenStream = new CommonTokenStream(lexer);
+                var parser = new PathExpressionParser(tokenStream);
+                
+                parser.RemoveErrorListeners();
+                
+                // Try to parse as workAreaIdPattern
+                var context = parser.workAreaIdPattern();
+                
+                // If parsing succeeded without errors, it matches the pattern
+                return context != null && context.exception == null;
+            }
+            catch
+            {
+                return false;
+            }
         }
 
         /// <summary>
-        /// Check if a path matches the EntityId semantic pattern (FLUID pattern matching).
+        /// Check if a path matches the EntityId semantic pattern from grammar
         /// </summary>
         private static bool MatchesEntityIdPattern(string path)
         {
             if (string.IsNullOrEmpty(path))
                 return false;
 
-            var lowerPath = path.ToLowerInvariant();
-            return (lowerPath.Contains("entityid") || lowerPath.Contains("entityids")) &&
-                   (lowerPath.EndsWith(".entityid") || lowerPath.Contains("entityids[0]") ||
-                    lowerPath == "entityid" ||
-                    lowerPath.Contains("inforequest.entityids") ||
-                    lowerPath.Contains("lemevent.entityid") ||
-                    lowerPath.Contains("workplantask.entities") ||
-                    lowerPath.Contains("workplantask.entityids"));
+            try
+            {
+                var inputStream = new AntlrInputStream(path);
+                var lexer = new PathExpressionLexer(inputStream);
+                var tokenStream = new CommonTokenStream(lexer);
+                var parser = new PathExpressionParser(tokenStream);
+                
+                parser.RemoveErrorListeners();
+                
+                // Try to parse as entityIdPattern
+                var context = parser.entityIdPattern();
+                
+                // If parsing succeeded without errors, it matches the pattern
+                return context != null && context.exception == null;
+            }
+            catch
+            {
+                return false;
+            }
         }
 
         private static void DiscoverGuidsRecursive(object obj, string currentPath, Dictionary<string, Guid> results, int depth)
@@ -400,7 +524,7 @@ namespace AntlrTest1.FluidExtraction
             }
         }
 
-        private class PathSegment
+        private class PathToken
         {
             public string PropertyName { get; set; } = string.Empty;
             public int? ArrayIndex { get; set; }

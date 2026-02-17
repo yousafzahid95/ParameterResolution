@@ -1,17 +1,16 @@
 using System.Text.Json;
 using AntlrTest1.Events;
 using AntlrTest1.Interfaces;
-using AntlrTest1.FluidExtraction;
+using AntlrTest1.AntlrExtraction;
 using Newtonsoft.Json.Linq;
 
-namespace AntlrTest1
+namespace AntlrTest1.AntlrExtraction
 {
     /// <summary>
-    /// Data source adapter using FLUID approach for parameter extraction.
-    /// This is a parallel implementation to LemDataSourceAdapter (ANTLR approach).
-    /// Both achieve the same result but use different extraction methods.
+    /// Data source adapter using ANTLR approach for parameter extraction.
+    /// Uses grammar-based semantic pattern matching for auto-discovery.
     /// </summary>
-    public class FluidDataSourceAdapter
+    public class LemDataSourceAdapter
     {
         public async Task<IEnumerable<IDataRecord>> GetRecordsAsync(
             dynamic eventData,
@@ -19,7 +18,7 @@ namespace AntlrTest1
             IEnumerable<IDataRecord> dataset,
             CancellationToken cancellationToken)
         {
-            Console.WriteLine($"DataSource adapter {nameof(FluidDataSourceAdapter)} execution starts (FLUID approach).");
+            Console.WriteLine($"DataSource adapter {nameof(LemDataSourceAdapter)} execution starts.");
 
             if (eventData is null)
             {
@@ -31,7 +30,7 @@ namespace AntlrTest1
                                  dataSourceParams != null ? JObject.FromObject(dataSourceParams) : 
                                  new JObject();
 
-            // Extract parameters using FLUID-based extractor (NO ANTLR)
+            // Extract parameters using ANTLR-based extractor
             var extractedParams = ExtractParameters(eventData, paramsObj);
 
             // Validate extracted parameters
@@ -45,7 +44,7 @@ namespace AntlrTest1
 
         private ExtractedParameters ExtractParameters(object eventData, JObject dataSourceParams)
         {
-            Console.WriteLine("\n[Parameter Extraction] Starting FLUID-based extraction (NO ANTLR)...");
+            Console.WriteLine("\n[Parameter Extraction] Starting ANTLR-based extraction...");
 
             var result = new ExtractedParameters
             {
@@ -57,8 +56,8 @@ namespace AntlrTest1
                 IsProjectLevel = dataSourceParams["isProjectLevel"]?.ToObject<bool>() ?? false
             };
 
-            // Use FLUID-based auto-discovery for semantic pattern matching
-            Console.WriteLine("\n[Auto-Discovery] Using FLUID-based semantic patterns...");
+            // Use grammar-based auto-discovery for semantic pattern matching
+            Console.WriteLine("\n[Auto-Discovery] Using grammar-based semantic patterns...");
             AutoDiscoverParameters(eventData, result);
 
             Console.WriteLine($"\n[Extraction Result] ProjectId={result.ProjectId}, WorkAreaId={result.WorkAreaId}, EntityId={result.EntityId}\n");
@@ -68,8 +67,8 @@ namespace AntlrTest1
 
         private void AutoDiscoverParameters(object eventData, ExtractedParameters result)
         {
-            // Use FLUID-based semantic pattern matching (NO ANTLR)
-            var (projectId, workAreaId, entityId) = FluidParameterExtractor.DiscoverSemanticGuids(eventData);
+            // Use grammar-based semantic pattern matching
+            var (projectId, workAreaId, entityId) = AntlrParameterExtractor.DiscoverSemanticGuids(eventData);
 
             if (projectId != Guid.Empty)
             {
@@ -113,7 +112,7 @@ namespace AntlrTest1
                 }
             }
 
-            Console.WriteLine("[Validation] ✓ All required identifiers present");
+            Console.WriteLine("[Validation] ? All required identifiers present");
         }
 
         #region API Calls
@@ -122,19 +121,17 @@ namespace AntlrTest1
         {
             try
             {
-                Console.WriteLine($"\n[API Call] GetWorkAreaEntityAsync (FLUID approach)");
+                Console.WriteLine($"\n[API Call] GetWorkAreaEntityAsync");
                 Console.WriteLine($"  ProjectId: {parameters.ProjectId}");
                 Console.WriteLine($"  WorkAreaId: {parameters.WorkAreaId}");
                 Console.WriteLine($"  EntityId: {parameters.EntityId}");
-                
-                await Task.Delay(10);
 
                 var dummyData = new JObject
                 {
                     ["EntityId"] = parameters.EntityId,
                     ["ProjectId"] = parameters.ProjectId,
                     ["WorkAreaId"] = parameters.WorkAreaId,
-                    ["EntityName"] = "Test WorkArea Entity (FLUID)",
+                    ["EntityName"] = "Test WorkArea Entity",
                     ["EntityType"] = "Corporation",
                     ["CategoryName"] = "Legal Entity",
                     ["TaxClassificationTypeName"] = "Partnership",
@@ -165,17 +162,15 @@ namespace AntlrTest1
         {
             try
             {
-                Console.WriteLine($"\n[API Call] GetProjectEntityAsync (FLUID approach)");
+                Console.WriteLine($"\n[API Call] GetProjectEntityAsync");
                 Console.WriteLine($"  ProjectId: {parameters.ProjectId}");
                 Console.WriteLine($"  EntityId: {parameters.EntityId}");
-                
-                await Task.Delay(10);
 
                 var dummyData = new JObject
                 {
                     ["EntityId"] = parameters.EntityId,
                     ["ProjectId"] = parameters.ProjectId,
-                    ["EntityName"] = "Test Project Entity (FLUID)",
+                    ["EntityName"] = "Test Project Entity",
                     ["EntityType"] = "Partnership",
                     ["CategoryName"] = "Legal Entity",
                     ["TaxClassificationTypeName"] = "Partnership",

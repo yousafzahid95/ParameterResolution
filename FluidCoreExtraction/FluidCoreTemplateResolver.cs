@@ -2,7 +2,7 @@ using AntlrTest1.Interfaces;
 using Fluid;
 using Newtonsoft.Json.Linq;
 
-namespace AntlrTest1.FluidExtraction
+namespace AntlrTest1.FluidCoreExtraction
 {
     /// <summary>
     /// Template resolver using Fluid.Core NuGet package (Liquid template engine).

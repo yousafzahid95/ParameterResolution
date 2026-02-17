@@ -1,17 +1,17 @@
+using System.Text;
 using System.Text.RegularExpressions;
 using AntlrTest1.Interfaces;
 using Newtonsoft.Json.Linq;
 
-namespace AntlrTest1.FluidExtraction
+namespace AntlrTest1.StringFormatExtraction
 {
     /// <summary>
-    /// Fluent interface builder for parameter resolution (FLUID approach - NO ANTLR).
-    /// Provides a declarative, chainable API for resolving template strings.
-    /// 
-    /// This is a standalone implementation that does NOT use ANTLR.
+    /// Template resolver using StringBuilder and String.Format approach.
+    /// This approach extracts placeholders, resolves them to values, then uses String.Format
+    /// with indexed placeholders {0}, {1}, etc. for efficient string building.
     /// 
     /// Example:
-    ///   var resolver = FluidParameterResolver
+    ///   var resolver = StringFormatTemplateResolver
     ///       .Create()
     ///       .WithEvent(eventData)
     ///       .WithConfig(ruleConfig)
@@ -19,27 +19,27 @@ namespace AntlrTest1.FluidExtraction
     ///   
     ///   var result = resolver.Resolve("Entity {LEM.EntityId} for project {InfoRequest.ProjectId}");
     /// </summary>
-    public class FluidParameterResolver
+    public class StringFormatTemplateResolver
     {
         private object? _eventData;
         private JObject? _ruleConfig;
         private IEnumerable<IDataRecord>? _dataset;
         private static readonly Regex PlaceholderRegex = new(@"\{([^{}]+)\}", RegexOptions.Compiled);
 
-        private FluidParameterResolver() { }
+        private StringFormatTemplateResolver() { }
 
         /// <summary>
-        /// Creates a new fluid parameter resolver builder.
+        /// Creates a new StringFormat template resolver builder.
         /// </summary>
-        public static FluidParameterResolver Create()
+        public static StringFormatTemplateResolver Create()
         {
-            return new FluidParameterResolver();
+            return new StringFormatTemplateResolver();
         }
 
         /// <summary>
         /// Sets the event data source for path expressions.
         /// </summary>
-        public FluidParameterResolver WithEvent(object eventData)
+        public StringFormatTemplateResolver WithEvent(object eventData)
         {
             _eventData = eventData;
             return this;
@@ -48,7 +48,7 @@ namespace AntlrTest1.FluidExtraction
         /// <summary>
         /// Sets the rule configuration JObject for Config.* placeholders.
         /// </summary>
-        public FluidParameterResolver WithConfig(JObject ruleConfig)
+        public StringFormatTemplateResolver WithConfig(JObject ruleConfig)
         {
             _ruleConfig = ruleConfig;
             return this;
@@ -57,14 +57,14 @@ namespace AntlrTest1.FluidExtraction
         /// <summary>
         /// Sets the dataset for dataset-based placeholders (e.g., {LEM.EntityId}).
         /// </summary>
-        public FluidParameterResolver WithDataset(IEnumerable<IDataRecord> dataset)
+        public StringFormatTemplateResolver WithDataset(IEnumerable<IDataRecord> dataset)
         {
             _dataset = dataset;
             return this;
         }
 
         /// <summary>
-        /// Resolves all placeholders in the template string.
+        /// Resolves all placeholders in the template string using StringBuilder and String.Format.
         /// </summary>
         /// <param name="template">Template string with optional {placeholder} syntax</param>
         /// <returns>Resolved string with all placeholders substituted</returns>
@@ -73,18 +73,72 @@ namespace AntlrTest1.FluidExtraction
             if (string.IsNullOrEmpty(template))
                 return template;
 
-            return PlaceholderRegex.Replace(template, match =>
+            // Find all placeholders in the template
+            var matches = PlaceholderRegex.Matches(template);
+            if (matches.Count == 0)
+                return template; // No placeholders, return as-is
+
+            // Build a dictionary of unique placeholders and their resolved values
+            var placeholderMap = new Dictionary<string, string>();
+            var resolvedValues = new List<string>();
+            var formatStringBuilder = new StringBuilder();
+            
+            int lastIndex = 0;
+            int placeholderIndex = 0;
+
+            foreach (Match match in matches)
             {
-                var expression = match.Groups[1].Value;
-                var resolved = ResolveExpression(expression);
-                return resolved ?? string.Empty;
-            });
+                // Add text before this placeholder
+                formatStringBuilder.Append(template, lastIndex, match.Index - lastIndex);
+                
+                var expression = match.Groups[1].Value.Trim();
+                
+                // Check if we've seen this placeholder before
+                if (!placeholderMap.ContainsKey(expression))
+                {
+                    // Resolve the expression
+                    var resolved = ResolveExpression(expression);
+                    var resolvedValue = resolved ?? string.Empty;
+                    
+                    // Store in map and add to values list
+                    placeholderMap[expression] = resolvedValue;
+                    resolvedValues.Add(resolvedValue);
+                    placeholderIndex = resolvedValues.Count - 1;
+                }
+                else
+                {
+                    // Reuse existing resolved value
+                    placeholderIndex = resolvedValues.IndexOf(placeholderMap[expression]);
+                }
+                
+                // Add indexed placeholder {0}, {1}, etc.
+                formatStringBuilder.Append('{').Append(placeholderIndex).Append('}');
+                
+                lastIndex = match.Index + match.Length;
+            }
+
+            // Add remaining text after last placeholder
+            formatStringBuilder.Append(template, lastIndex, template.Length - lastIndex);
+
+            // Use String.Format to replace indexed placeholders with resolved values
+            try
+            {
+                var formatString = formatStringBuilder.ToString();
+                return string.Format(formatString, resolvedValues.ToArray());
+            }
+            catch (FormatException fe)
+            {
+                // Log or handle error — here we return the original template
+                Console.Error.WriteLine($"StringFormat template error for '{template}': {fe.Message}");
+                return template;
+            }
         }
 
         /// <summary>
         /// Resolves a single expression (without curly braces).
+        /// Uses the same extraction logic as FluidParameterExtractor for consistency.
         /// </summary>
-        public string? ResolveExpression(string expression)
+        private string? ResolveExpression(string expression)
         {
             if (string.IsNullOrWhiteSpace(expression))
                 return null;
@@ -114,11 +168,10 @@ namespace AntlrTest1.FluidExtraction
 
                 if (record != null)
                 {
-                    // Use FLUID extractor (NOT ANTLR)
-                    var value = FluidParameterExtractor.Extract(record.Data, path);
+                    // Use BespokeCustomExtraction for consistency with other approaches
+                    var value = BespokeCustomExtraction.BespokeParameterExtractor.Extract(record.Data, path);
 
-                    // If FLUID navigation didn't move off the root JObject, or returned null,
-                    // fall back to JObject.SelectToken for scalar extraction.
+                    // If extraction didn't work, fall back to JObject.SelectToken
                     if (value == null || ReferenceEquals(value, record.Data))
                     {
                         if (record.Data is JObject jObj)
@@ -140,8 +193,8 @@ namespace AntlrTest1.FluidExtraction
             // Fallback: treat whole expression as a path on eventData
             if (_eventData != null)
             {
-                // Use FLUID extractor (NOT ANTLR)
-                var eventValue = FluidParameterExtractor.Extract(_eventData, expression);
+                // Use BespokeCustomExtraction for consistency
+                var eventValue = BespokeCustomExtraction.BespokeParameterExtractor.Extract(_eventData, expression);
                 return eventValue?.ToString();
             }
 

@@ -7,12 +7,12 @@ This project is a **POC** for resolving **datasource parameters** and **ActionIt
 - **rule config** (a `JObject` loaded from JSON)
 - **mixed templates** (static text + dynamic placeholders)
 
-It contains **two separate, parallel implementations** that achieve the same functional result:
+It contains **four separate, parallel implementations** that achieve the same functional result:
 
 1. **ANTLR approach** (grammar-based parsing)
-2. **FLUID approach** (reflection + string parsing; *no ANTLR dependency*)
-
-It also includes an optional **Fluid.Core (NuGet)** integration for **Liquid** templates (separate from both).
+2. **Bespoke (Custom) approach** (reflection + string parsing; *no ANTLR dependency*)
+3. **FLUID (NuGet Core) approach** (Fluid.Core package for Liquid templates)
+4. **StringFormat approach** (StringBuilder + String.Format with indexed placeholders)
 
 ---
 
@@ -64,20 +64,28 @@ All event classes that the adapter can handle:
   - Uses ANTLR auto-discovery to resolve required IDs
   - Returns dummy `IDataRecord` dataset (POC)
 
-### FLUID approach (no ANTLR)
-- **FluidExtraction/FluidParameterExtractor.cs**
+### Bespoke (Custom) approach (no ANTLR)
+- **BespokeCustomExtraction/BespokeParameterExtractor.cs**
   - Standalone extractor (reflection + string parsing)
   - Navigates CLR objects *and* `JObject/JToken` trees
   - Provides GUID auto-discovery using naming/pattern rules (no grammar)
-- **FluidExtraction/FluidParameterResolver.cs**
+- **BespokeCustomExtraction/BespokeParameterResolver.cs**
   - Fluent API for `{...}` template resolution and ActionItem creation
-- **FluidExtraction/FluidDataSourceAdapter.cs**
-  - Parallel datasource adapter to `LemDataSourceAdapter` but uses FLUID extraction (no ANTLR)
+- **BespokeCustomExtraction/BespokeDataSourceAdapter.cs**
+  - Parallel datasource adapter to `LemDataSourceAdapter` but uses Bespoke Custom extraction (no ANTLR)
 
 ### Fluid.Core (NuGet) integration (Liquid templates)
-- **FluidExtraction/FluidCoreTemplateResolver.cs**
+- **FluidCoreExtraction/FluidCoreTemplateResolver.cs**
   - Uses **Fluid.Core** package to render Liquid templates (e.g. `{{ LEM.EntityId }}`)
   - This is *not* the same syntax as `{LEM.EntityId}`
+
+### StringFormat approach (StringBuilder + String.Format)
+- **StringFormatExtraction/StringFormatTemplateResolver.cs**
+  - Uses `StringBuilder` for efficient string building
+  - Converts template placeholders to indexed format (`{0}`, `{1}`, etc.)
+  - Uses `String.Format` to resolve templates with resolved values
+  - Reuses resolved values for duplicate placeholders
+  - Fluent API similar to Bespoke Custom approach
 
 ### Domain Models
 - **ActionItem.cs** - Action item model with EntityId, WorkAreaId, TaskId, SourceSystemKey, Description, and Status
@@ -87,15 +95,17 @@ All event classes that the adapter can handle:
   - Runs a series of console demos
   - Contains clearly separated sections:
     - ANTLR section
-    - FLUID section
+    - Bespoke (Custom) section
     - Side-by-side comparison
     - Fluid.Core (Liquid) demo
+    - StringFormat approach demo
+    - Comprehensive comparison of all 4 approaches
 
 ## Features
 
 ### Placeholder syntax (`{...}` templates)
 
-Both ANTLR and FLUID (custom) resolvers support the same placeholder syntax:
+Both ANTLR and Bespoke (Custom) resolvers support the same placeholder syntax:
 
 - **Event paths**: `{InfoRequest.ProjectId}`, `{WorkplanTask.Entities[0].WorkAreaEntityId}`
 - **Dataset paths**: `{LEM.EntityId}`, `{LEM.Attributes.TaxId}`
@@ -133,21 +143,21 @@ var resolved = ParameterTemplateResolver.ResolveTemplate(
     dataset);
 ```
 
-#### 2. FLUID Approach (Separate Implementation - NO ANTLR)
+#### 2. Bespoke (Custom) Approach (Separate Implementation - NO ANTLR)
 - **Completely independent** - does NOT use ANTLR
 - Uses **reflection and pattern matching** for path navigation
 - **Declarative, chainable API** for building resolvers
 - Method chaining: `.WithEvent()`, `.WithConfig()`, `.WithDataset()`
 - Built-in `BuildActionItem()` helper for creating action items
-- Data source adapter: `FluidDataSourceAdapter`
+- Data source adapter: `BespokeDataSourceAdapter`
 
-**Example (Custom FLUID with {placeholder} syntax):**
+**Example (Bespoke Custom with {placeholder} syntax):**
 ```csharp
-// FLUID approach - uses FluidParameterExtractor (NO ANTLR)
-var adapter = new FluidDataSourceAdapter();
+// Bespoke Custom approach - uses BespokeParameterExtractor (NO ANTLR)
+var adapter = new BespokeDataSourceAdapter();
 var dataset = await adapter.GetRecordsAsync(eventData, config, new List<IDataRecord>(), token);
 
-var resolver = AntlrTest1.FluidExtraction.FluidParameterResolver
+var resolver = AntlrTest1.BespokeCustomExtraction.BespokeParameterResolver
     .Create()
     .WithEvent(eventData)
     .WithConfig(ruleConfig)
@@ -173,6 +183,40 @@ var fluidCoreResolver = FluidCoreTemplateResolver
 // Liquid syntax: {{ variable.property }}
 var result = fluidCoreResolver.Render("Entity {{ LEM.EntityId }} for project {{ Event.InfoRequest.ProjectId }}");
 ```
+
+#### 3. StringFormat Approach (StringBuilder + String.Format)
+- Uses **StringBuilder** for efficient string building
+- Converts `{placeholder}` syntax to indexed `{0}`, `{1}`, etc. format
+- Uses **String.Format** to resolve templates with resolved values
+- Reuses resolved values for duplicate placeholders (optimization)
+- Fluent API similar to FLUID approach
+- Data source adapter: Uses `BespokeDataSourceAdapter` (same as Bespoke Custom)
+
+**Example:**
+```csharp
+// StringFormat approach - uses StringBuilder and String.Format
+var adapter = new FluidDataSourceAdapter();
+var dataset = await adapter.GetRecordsAsync(eventData, config, new List<IDataRecord>(), token);
+
+var resolver = StringFormatTemplateResolver
+    .Create()
+    .WithEvent(eventData)
+    .WithConfig(ruleConfig)
+    .WithDataset(dataset);
+
+var resolved = resolver.Resolve("Entity {LEM.EntityId} for project {InfoRequest.ProjectId}");
+var actionItem = resolver.BuildActionItem(
+    sourceSystemKeyTemplate: "A002IR_{LEM.EntityId}",
+    descriptionTemplate: "Action item for entity {LEM.EntityId}",
+    status: "Open");
+```
+
+**How it works:**
+1. Extracts all unique placeholders from the template
+2. Resolves each placeholder to a value (using same extraction logic as FLUID)
+3. Builds a format string with indexed placeholders (`{0}`, `{1}`, etc.)
+4. Uses `String.Format(formatString, resolvedValues)` to produce final result
+5. Reuses resolved values when the same placeholder appears multiple times
 
 ### Dummy Data Generation
 The adapter returns mock JObject data with:
@@ -214,8 +258,11 @@ The `Program.cs` file contains multiple console demos, including:
 6. Multiple events with same config (Rule A002IR scenario) (ANTLR)
 7. Grammar pattern validation (false positive test) (ANTLR)
 8. Template Resolution & ActionItem Creation (ANTLR approach)
-9. FLUID Approach - DataSource Adapter & Template Resolution (FLUID, NO ANTLR)
+9. Bespoke Custom Approach - DataSource Adapter & Template Resolution (Bespoke Custom, NO ANTLR)
 10. Side-by-Side Comparison - ANTLR vs FLUID (both approaches with same data)
+11. Fluid.Core NuGet Package - Liquid Template Rendering
+12. StringFormat Approach - StringBuilder + String.Format
+13. Comprehensive Comparison - All 4 Approaches
 
 Each test creates an event with GUIDs and demonstrates parameter extraction and template resolution.
 
