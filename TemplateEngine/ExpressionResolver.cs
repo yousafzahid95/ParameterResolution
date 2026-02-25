@@ -1,6 +1,6 @@
-using AntlrTest1.Interfaces;
+using RuleTemplateEngine.Interfaces;
 
-namespace AntlrTest1.TemplateEngine
+namespace RuleTemplateEngine.TemplateEngine
 {
     /// <summary>
     /// Resolves bracket expressions like [LEM.EntityId] or [LEM[2].EntityId]

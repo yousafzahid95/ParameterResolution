@@ -1,4 +1,4 @@
-﻿using AntlrTest1.Interfaces;
+﻿using RuleTemplateEngine.Interfaces;
 
 namespace RuleTemplateEngine.Helpers
 {

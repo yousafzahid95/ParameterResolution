@@ -1,9 +1,8 @@
-using AntlrTest1;
-using AntlrTest1.Dtos;
-using AntlrTest1.Events;
-using AntlrTest1.Interfaces;
-using AntlrTest1.Models;
-using AntlrTest1.TemplateEngine;
+using RuleTemplateEngine;
+using RuleTemplateEngine.Dtos;
+using RuleTemplateEngine.Events;
+using RuleTemplateEngine.Interfaces;
+using RuleTemplateEngine.Models;
 using RuleTemplateEngine.Helpers;
 
 Console.WriteLine("══════════════════════════════════════════════════════");
@@ -48,7 +47,7 @@ static Dictionary<string, TemplateParam> BuildLemParamsForA002Ir()
 
 static ActionItemTemplateDefinition BuildA002IrActionItemTemplate()
 {
-    // Mirrors your A002IR ActionItemTemplate example, extended with dynamic
+    // Mirrors A002IR ActionItemTemplate example, extended with dynamic
     // EntityId / TaskId / SourceSystemKey resolution via the template engine.
     return new ActionItemTemplateDefinition
     {
@@ -256,12 +255,12 @@ static Task RunMultipleLemRecordsTestAsync(
     };
 
     // Resolve via RuleTemplateEngine only (single public API)
-    var firstEntityId = AntlrTest1.TemplateEngine.RuleTemplateEngine.Resolve(new TemplateParam { Template = "{0}", Params = { "[LEM.EntityId]" } }, templateDataset);
-    var firstByIndex = AntlrTest1.TemplateEngine.RuleTemplateEngine.Resolve(new TemplateParam { Template = "{0}", Params = { "[LEM[0].EntityId]" } }, templateDataset);
+    var firstEntityId = RuleTemplateEngine.TemplateEngine.RuleTemplateEngine.Resolve(new TemplateParam { Template = "{0}", Params = { "[LEM.EntityId]" } }, templateDataset);
+    var firstByIndex = RuleTemplateEngine.TemplateEngine.RuleTemplateEngine.Resolve(new TemplateParam { Template = "{0}", Params = { "[LEM[0].EntityId]" } }, templateDataset);
     Console.WriteLine($"  [LEM.EntityId]     = {firstEntityId}");
     Console.WriteLine($"  [LEM[0].EntityId]  = {firstByIndex}");
 
-    var thirdEntityId = AntlrTest1.TemplateEngine.RuleTemplateEngine.Resolve(new TemplateParam { Template = "{0}", Params = { "[LEM[2].EntityId]" } }, templateDataset);
+    var thirdEntityId = RuleTemplateEngine.TemplateEngine.RuleTemplateEngine.Resolve(new TemplateParam { Template = "{0}", Params = { "[LEM[2].EntityId]" } }, templateDataset);
     Console.WriteLine($"  [LEM[2].EntityId]  = {thirdEntityId}");
 
     // Action item using first LEM (default template)
@@ -319,19 +318,19 @@ static ActionItem BuildActionItem(
     IDataRecord lemRecord)
 {
     var description = template.Description != null
-        ? AntlrTest1.TemplateEngine.RuleTemplateEngine.Resolve(template.Description, dataset)
+        ? RuleTemplateEngine.TemplateEngine.RuleTemplateEngine.Resolve(template.Description, dataset)
         : string.Empty;
 
     var entityIdStr = template.EntityId != null
-        ? AntlrTest1.TemplateEngine.RuleTemplateEngine.Resolve(template.EntityId, dataset)
+        ? RuleTemplateEngine.TemplateEngine.RuleTemplateEngine.Resolve(template.EntityId, dataset)
         : string.Empty;
 
     var taskIdStr = template.TaskId != null
-        ? AntlrTest1.TemplateEngine.RuleTemplateEngine.Resolve(template.TaskId, dataset)
+        ? RuleTemplateEngine.TemplateEngine.RuleTemplateEngine.Resolve(template.TaskId, dataset)
         : string.Empty;
 
     var sourceKey = template.SourceSystemKey != null
-        ? AntlrTest1.TemplateEngine.RuleTemplateEngine.Resolve(template.SourceSystemKey, dataset)
+        ? RuleTemplateEngine.TemplateEngine.RuleTemplateEngine.Resolve(template.SourceSystemKey, dataset)
         : string.Empty;
 
     var workAreaIdVal = lemRecord["WorkAreaId"];

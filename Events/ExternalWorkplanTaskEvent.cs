@@ -1,4 +1,4 @@
-namespace AntlrTest1.Events
+namespace RuleTemplateEngine.Events
 {
     public class ExternalWorkplanTaskEvent
     {

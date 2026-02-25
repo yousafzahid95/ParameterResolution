@@ -1,10 +1,10 @@
-using AntlrTest1.Dtos;
-using AntlrTest1.Interfaces;
-using AntlrTest1.Models;
-using AntlrTest1.TemplateEngine;
+using RuleTemplateEngine.Dtos;
+using RuleTemplateEngine.Interfaces;
+using RuleTemplateEngine.Models;
+using RuleTemplateEngine.TemplateEngine;
 using RuleTemplateEngine.Helpers;
 
-namespace AntlrTest1
+namespace RuleTemplateEngine
 {
     public class LemDataSourceAdapter : IDataSourceAdapter
     {
@@ -83,7 +83,7 @@ namespace AntlrTest1
             if (!dataSourceParams.TryGetValue(key, out var templateParam))
                 return Guid.Empty;
 
-            var resolved = AntlrTest1.TemplateEngine.RuleTemplateEngine.Resolve(templateParam, dataset);
+            var resolved = RuleTemplateEngine.TemplateEngine.RuleTemplateEngine.Resolve(templateParam, dataset);
             return Guid.TryParse(resolved, out var guid) ? guid : Guid.Empty;
         }
 

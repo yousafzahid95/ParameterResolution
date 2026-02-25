@@ -1,6 +1,6 @@
 using Newtonsoft.Json;
 
-namespace AntlrTest1.Models
+namespace RuleTemplateEngine.Models
 {
     /// <summary>
     /// Root rule definition with events, action item template, and data source checks.

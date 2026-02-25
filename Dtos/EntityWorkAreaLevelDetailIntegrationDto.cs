@@ -1,4 +1,4 @@
-namespace AntlrTest1.Dtos
+namespace RuleTemplateEngine.Dtos
 {
     public class EntityWorkAreaLevelDetailIntegrationDto : BaseEntityWorkAreaLevelIntegrationDto
     {

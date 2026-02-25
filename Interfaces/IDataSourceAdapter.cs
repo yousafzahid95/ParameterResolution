@@ -1,6 +1,6 @@
-using AntlrTest1.Models;
+using RuleTemplateEngine.Models;
 
-namespace AntlrTest1.Interfaces
+namespace RuleTemplateEngine.Interfaces
 {
     /// <summary>
     /// Data source adapter: resolves params from the rule and returns records (e.g. LEM) from the external source.

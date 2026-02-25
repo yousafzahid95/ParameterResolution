@@ -1,7 +1,7 @@
-namespace AntlrTest1.Interfaces
+namespace RuleTemplateEngine.Interfaces
 {
     /// <summary>
-    /// Data record with Id, Columns, and indexer (matches your domain IDataRecord).
+    /// Data record with Id, Columns, and indexer
     /// Records are grouped by DataSourceKey (e.g. "LEM") in the dataset; the key is not on the record.
     /// </summary>
     public interface IDataRecord : IRecord

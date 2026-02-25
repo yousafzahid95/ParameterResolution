@@ -1,4 +1,4 @@
-namespace AntlrTest1
+namespace RuleTemplateEngine
 {
     /// <summary>
     /// Represents an action item created from extracted parameters and dataset values.

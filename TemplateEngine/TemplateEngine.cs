@@ -1,7 +1,7 @@
-using AntlrTest1.Interfaces;
-using AntlrTest1.Models;
+using RuleTemplateEngine.Interfaces;
+using RuleTemplateEngine.Models;
 
-namespace AntlrTest1.TemplateEngine
+namespace RuleTemplateEngine.TemplateEngine
 {
     /// <summary>
     /// Resolves a TemplateParam against a dataset keyed by DataSourceKey.

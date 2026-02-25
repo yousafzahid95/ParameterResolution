@@ -1,4 +1,4 @@
-namespace AntlrTest1.Interfaces
+namespace RuleTemplateEngine.Interfaces
 {
     /// <summary>
     /// Record with indexer access by column name (e.g. CustomDataRecord, in-memory records).

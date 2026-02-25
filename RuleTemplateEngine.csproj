@@ -14,7 +14,7 @@
   <ItemGroup>
     <Antlr4 Include="Grammar\PathExpression.g4">
       <Generator>MSBuild:Compile</Generator>
-      <CustomToolNamespace>AntlrTest1.Grammar</CustomToolNamespace>
+      <CustomToolNamespace>RuleTemplateEngine.Grammar</CustomToolNamespace>
       <Listener>false</Listener>
       <Visitor>true</Visitor>
     </Antlr4>
