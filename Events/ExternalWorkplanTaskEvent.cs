@@ -9,6 +9,9 @@ namespace AntlrTest1.Events
     {
         public Guid ProjectId { get; set; }
         public Guid WorkAreaId { get; set; }
+        public Guid TaskId { get; set; }
+        public Guid EntityId { get; set; }
+        public Guid? ParentId { get; set; }
         public List<WorkplanTaskEntity>? Entities { get; set; }
     }
 
