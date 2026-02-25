@@ -1,16 +1,12 @@
-using Newtonsoft.Json.Linq;
-
-namespace AntlrTest1.Interfaces
+namespace RuleTemplateEngine.Interfaces
 {
-    public interface IDataRecord
+    /// <summary>
+    /// Data record with Id, Columns, and indexer
+    /// Records are grouped by DataSourceKey (e.g. "LEM") in the dataset; the key is not on the record.
+    /// </summary>
+    public interface IDataRecord : IRecord
     {
-        JObject Data { get; set; }
-        string Source { get; set; }
-    }
-
-    public class DataRecord : IDataRecord
-    {
-        public JObject Data { get; set; } = new();
-        public string Source { get; set; } = string.Empty;
+        string Id { get; }
+        string[] Columns { get; }
     }
 }

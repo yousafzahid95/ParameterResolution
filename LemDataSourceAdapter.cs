@@ -1,114 +1,90 @@
-using System.Text.Json;
-using AntlrTest1.Events;
-using AntlrTest1.Interfaces;
-using AntlrTest1.ParameterExtraction;
-using Newtonsoft.Json.Linq;
+using RuleTemplateEngine.Dtos;
+using RuleTemplateEngine.Interfaces;
+using RuleTemplateEngine.Models;
+using RuleTemplateEngine.TemplateEngine;
+using RuleTemplateEngine.Helpers;
 
-namespace AntlrTest1
+namespace RuleTemplateEngine
 {
-    public class LemDataSourceAdapter
+    public class LemDataSourceAdapter : IDataSourceAdapter
     {
+        /// <inheritdoc />
+        /// <remarks>
+        /// <paramref name="dataset"/> convention:
+        /// - 1 record: dataset[0] = event body only → keyed as "Event" ([Event.ProjectId] etc.).
+        /// - 2+ records: dataset[0] = EventMessage (message envelope), dataset[1] = EventData (Body) → keyed as "EventMessage" and "EventData"; "Event" is an alias for EventData for backward compatibility.
+        /// LEM records are returned by the adapter; the caller appends them to the same list.
+        /// </remarks>
         public async Task<IEnumerable<IDataRecord>> GetRecordsAsync(
-            dynamic eventData,
-            dynamic dataSourceParams,
-            IEnumerable<IDataRecord> dataset,
+            object eventData,
+            IDictionary<string, TemplateParam> dataSourceParams,
+            IReadOnlyList<IDataRecord> dataset,
+            CancellationToken cancellationToken = default)
+        {
+            var keyedDataset = new Dictionary<string, IReadOnlyList<IDataRecord>>(StringComparer.OrdinalIgnoreCase);
+            if (dataset.Count == 0)
+            {
+                // No-op
+            }
+            else if (dataset.Count >= 2)
+            {
+                keyedDataset["EventMessage"] = new List<IDataRecord> { dataset[0] };
+                keyedDataset["EventData"] = new List<IDataRecord> { dataset[1] };
+                keyedDataset["Event"] = new List<IDataRecord> { dataset[1] };
+            }
+            else
+            {
+                keyedDataset["Event"] = new List<IDataRecord> { dataset[0] };
+            }
+
+            return await GetRecordsAsync(eventData, dataSourceParams, keyedDataset, cancellationToken).ConfigureAwait(false);
+        }
+
+        /// <summary>
+        /// Uses rule-based template params and the dataset (keyed by DataSourceKey) to resolve ProjectId / WorkAreaId / EntityId,
+        /// then returns LEM records via TransformToIDataRecord from the API response.
+        /// </summary>
+        public async Task<IEnumerable<IDataRecord>> GetRecordsAsync(
+            object eventData,
+            IDictionary<string, TemplateParam> dataSourceParams,
+            IReadOnlyDictionary<string, IReadOnlyList<IDataRecord>> dataset,
             CancellationToken cancellationToken)
         {
             Console.WriteLine($"DataSource adapter {nameof(LemDataSourceAdapter)} execution starts.");
 
             if (eventData is null)
-            {
                 throw new InvalidOperationException("Event data cannot be null.");
-            }
 
-            // Convert dataSourceParams to JObject
-            JObject? paramsObj = dataSourceParams is JObject jObj ? jObj : 
-                                 dataSourceParams != null ? JObject.FromObject(dataSourceParams) : 
-                                 new JObject();
+            if (dataSourceParams is null)
+                throw new ArgumentNullException(nameof(dataSourceParams));
 
-            // Extract parameters using ANTLR-based extractor
-            var extractedParams = ExtractParameters(eventData, paramsObj);
-
-            // Validate extracted parameters
-            ValidateParameters(extractedParams);
-
-            // Call appropriate API based on level
-            return extractedParams.IsProjectLevel
-                ? await GetProjectEntityAsync(extractedParams)
-                : await GetWorkAreaEntityAsync(extractedParams);
-        }
-
-        private ExtractedParameters ExtractParameters(object eventData, JObject dataSourceParams)
-        {
-            Console.WriteLine("\n[Parameter Extraction] Starting ANTLR-based extraction...");
-
-            var result = new ExtractedParameters
+            var parameters = new ExtractedParameters
             {
-                // Get configuration from dataSourceParams
-                EffectiveDate = dataSourceParams["effectiveDate"]?.ToObject<DateTime?>(),
-                SearchOption = dataSourceParams["searchOption"]?.ToString() ?? "Active",
-                IncludeOutOfScope = dataSourceParams["includeOutOfScope"]?.ToObject<bool>() ?? false,
-                IncludeCollections = dataSourceParams["includeCollections"]?.ToObject<bool>() ?? true,
-                IsProjectLevel = dataSourceParams["isProjectLevel"]?.ToObject<bool>() ?? false
+                ProjectId = ResolveGuidParam("ProjectId", dataSourceParams, dataset),
+                WorkAreaId = ResolveGuidParam("WorkAreaId", dataSourceParams, dataset),
+                EntityId = ResolveGuidParam("EntityId", dataSourceParams, dataset),
+                EffectiveDate = null,
+                SearchOption = "Active",
+                IncludeOutOfScope = false,
+                IncludeCollections = true,
+                IsProjectLevel = false
             };
 
-            // Use grammar-based auto-discovery for semantic pattern matching
-            Console.WriteLine("\n[Auto-Discovery] Using grammar-based semantic patterns...");
-            AutoDiscoverParameters(eventData, result);
+            Console.WriteLine($"\n[Extraction Result] ProjectId={parameters.ProjectId}, WorkAreaId={parameters.WorkAreaId}, EntityId={parameters.EntityId}\n");
 
-            Console.WriteLine($"\n[Extraction Result] ProjectId={result.ProjectId}, WorkAreaId={result.WorkAreaId}, EntityId={result.EntityId}\n");
-
-            return result;
+            return await GetWorkAreaEntityAsync(parameters).ConfigureAwait(false);
         }
 
-        private void AutoDiscoverParameters(object eventData, ExtractedParameters result)
+        private static Guid ResolveGuidParam(
+            string key,
+            IDictionary<string, TemplateParam> dataSourceParams,
+            IReadOnlyDictionary<string, IReadOnlyList<IDataRecord>> dataset)
         {
-            // Use grammar-based semantic pattern matching
-            var (projectId, workAreaId, entityId) = AntlrParameterExtractor.DiscoverSemanticGuids(eventData);
+            if (!dataSourceParams.TryGetValue(key, out var templateParam))
+                return Guid.Empty;
 
-            if (projectId != Guid.Empty)
-            {
-                result.ProjectId = projectId;
-            }
-
-            if (workAreaId != Guid.Empty)
-            {
-                result.WorkAreaId = workAreaId;
-            }
-
-            if (entityId != Guid.Empty)
-            {
-                result.EntityId = entityId;
-            }
-
-            // Determine if project level
-            if (result.WorkAreaId == Guid.Empty && result.ProjectId != Guid.Empty && result.EntityId != Guid.Empty)
-            {
-                result.IsProjectLevel = true;
-                Console.WriteLine($"  [Auto-Discovery] Detected as Project Level");
-            }
-        }
-
-        private void ValidateParameters(ExtractedParameters parameters)
-        {
-            if (parameters.IsProjectLevel)
-            {
-                if (parameters.ProjectId == Guid.Empty || parameters.EntityId == Guid.Empty)
-                {
-                    Console.WriteLine($"[Validation Error] ProjectLevel: Required identifiers missing. ProjectId: {parameters.ProjectId}, EntityId: {parameters.EntityId}");
-                    throw new InvalidOperationException("ProjectId and EntityId are required for project-level queries.");
-                }
-            }
-            else
-            {
-                if (parameters.ProjectId == Guid.Empty || parameters.WorkAreaId == Guid.Empty || parameters.EntityId == Guid.Empty)
-                {
-                    Console.WriteLine($"[Validation Error] WorkAreaLevel: Required identifiers missing. ProjectId: {parameters.ProjectId}, WorkAreaId: {parameters.WorkAreaId}, EntityId: {parameters.EntityId}");
-                    throw new InvalidOperationException("ProjectId, WorkAreaId, and EntityId are required for workarea-level queries.");
-                }
-            }
-
-            Console.WriteLine("[Validation] ? All required identifiers present");
+            var resolved = RuleTemplateEngine.TemplateEngine.RuleTemplateEngine.Resolve(templateParam, dataset);
+            return Guid.TryParse(resolved, out var guid) ? guid : Guid.Empty;
         }
 
         #region API Calls
@@ -121,33 +97,9 @@ namespace AntlrTest1
                 Console.WriteLine($"  ProjectId: {parameters.ProjectId}");
                 Console.WriteLine($"  WorkAreaId: {parameters.WorkAreaId}");
                 Console.WriteLine($"  EntityId: {parameters.EntityId}");
-                
-                await Task.Delay(10);
 
-                var dummyData = new JObject
-                {
-                    ["EntityId"] = parameters.EntityId,
-                    ["ProjectId"] = parameters.ProjectId,
-                    ["WorkAreaId"] = parameters.WorkAreaId,
-                    ["EntityName"] = "Test WorkArea Entity",
-                    ["EntityType"] = "Corporation",
-                    ["CategoryName"] = "Legal Entity",
-                    ["TaxClassificationTypeName"] = "Partnership",
-                    ["Status"] = parameters.SearchOption,
-                    ["EffectiveDate"] = parameters.EffectiveDate?.ToString() ?? DateTime.UtcNow.ToString(),
-                    ["IncludeOutOfScope"] = parameters.IncludeOutOfScope,
-                    ["IncludeCollections"] = parameters.IncludeCollections,
-                    ["CreatedDate"] = DateTime.UtcNow.AddDays(-30).ToString(),
-                    ["ModifiedDate"] = DateTime.UtcNow.ToString(),
-                    ["Attributes"] = new JObject
-                    {
-                        ["TaxId"] = "12-3456789",
-                        ["Jurisdiction"] = "Delaware",
-                        ["IncorporationDate"] = "2020-01-01"
-                    }
-                };
-
-                return new List<IDataRecord> { new DataRecord { Data = dummyData, Source = "LEM" } };
+                var response = await FetchWorkAreaEntityAsync(parameters).ConfigureAwait(false);
+                return TransformToIDataRecord<EntityWorkAreaLevelDetailIntegrationDto>.TransformFromObject(response.Data, "LEM");
             }
             catch (Exception ex)
             {
@@ -156,44 +108,40 @@ namespace AntlrTest1
             }
         }
 
-        private async Task<IEnumerable<IDataRecord>> GetProjectEntityAsync(ExtractedParameters parameters)
+        /// <summary>
+        /// Fetches work area entity from external API. Replace with real API client.
+        /// </summary>
+        private Task<WorkAreaEntityResponse> FetchWorkAreaEntityAsync(ExtractedParameters parameters)
         {
-            try
+            var data = new EntityWorkAreaLevelDetailIntegrationDto
             {
-                Console.WriteLine($"\n[API Call] GetProjectEntityAsync");
-                Console.WriteLine($"  ProjectId: {parameters.ProjectId}");
-                Console.WriteLine($"  EntityId: {parameters.EntityId}");
-                
-                await Task.Delay(10);
+                Id = parameters.EntityId,
+                ProjectEntityId = parameters.EntityId,
+                ProjectId = parameters.ProjectId,
+                WorkAreaId = parameters.WorkAreaId,
+                Name = "Test WorkArea Entity",
+                TypeName = "Corporation",
+                CategoryName = "Legal Entity",
+                TaxClassificationTypeName = "Partnership",
+                Status = parameters.SearchOption,
+                LastModifiedDate = parameters.EffectiveDate ?? DateTime.UtcNow
+            };
+            return Task.FromResult(new WorkAreaEntityResponse { Data = data });
+        }
 
-                var dummyData = new JObject
-                {
-                    ["EntityId"] = parameters.EntityId,
-                    ["ProjectId"] = parameters.ProjectId,
-                    ["EntityName"] = "Test Project Entity",
-                    ["EntityType"] = "Partnership",
-                    ["CategoryName"] = "Legal Entity",
-                    ["TaxClassificationTypeName"] = "Partnership",
-                    ["Status"] = parameters.SearchOption,
-                    ["EffectiveDate"] = parameters.EffectiveDate?.ToString() ?? DateTime.UtcNow.ToString(),
-                    ["IncludeOutOfScope"] = parameters.IncludeOutOfScope,
-                    ["CreatedDate"] = DateTime.UtcNow.AddDays(-60).ToString(),
-                    ["ModifiedDate"] = DateTime.UtcNow.ToString(),
-                    ["Attributes"] = new JObject
-                    {
-                        ["TaxId"] = "98-7654321",
-                        ["FormationType"] = "LLC",
-                        ["StateOfFormation"] = "California"
-                    }
-                };
-
-                return new List<IDataRecord> { new DataRecord { Data = dummyData, Source = "LEM" } };
-            }
-            catch (Exception ex)
+        private Task<IEnumerable<IDataRecord>> GetProjectEntityAsync(ExtractedParameters parameters)
+        {
+            var data = new EntityWorkAreaLevelDetailIntegrationDto
             {
-                Console.WriteLine($"[Error] Failed to fetch Project entity data: {ex.Message}");
-                throw new InvalidOperationException("Error while fetching Project entity data: " + ex.Message, ex);
-            }
+                Id = parameters.EntityId,
+                ProjectEntityId = parameters.EntityId,
+                ProjectId = parameters.ProjectId,
+                WorkAreaId = parameters.WorkAreaId,
+                Name = "Test Project Entity",
+                Status = parameters.SearchOption
+            };
+            var response = new WorkAreaEntityResponse { Data = data };
+            return Task.FromResult(TransformToIDataRecord<EntityWorkAreaLevelDetailIntegrationDto>.TransformFromObject(response.Data, "LEM"));
         }
 
         #endregion
@@ -210,6 +158,11 @@ namespace AntlrTest1
             public bool IncludeOutOfScope { get; set; }
             public bool IncludeCollections { get; set; }
             public bool IsProjectLevel { get; set; }
+        }
+
+        private class WorkAreaEntityResponse
+        {
+            public EntityWorkAreaLevelDetailIntegrationDto Data { get; set; } = null!;
         }
 
         #endregion
